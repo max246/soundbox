@@ -13,7 +13,9 @@ const uint8_t volume = 0; // MP3 Player volume 0=max, 255=lowest (off)
 const uint16_t monoMode = 1;  // Mono setting 0=off, 3=max
 
 int indexLoopSound = -1;
+int sequence[8] =  {-1,-1,-1,-1,-1,-1,-1,-1};
 
+unsigned long lastSerial = 0;
 void setup() {
   
   Serial.begin(9600);
@@ -24,85 +26,125 @@ void setup() {
 
 void loop () {
   
-  int touch7 = 0;
-  int touch8 = 0;
-  touch7 = analogRead(A0);
-  touch8 = analogRead(A1);
-  if  (touch7 < VALUE_TOUCH) {
-      sendNote(7);
-  }  else if  (touch8 < VALUE_TOUCH) {
-      sendNote(8);
-  } 
+
   
   readSerial();
   
   
-  if (!MP3player.isPlaying() && indexLoopSound != -1) { //IF the  music is finished , restart it
+  if (!MP3player.isPlaying()) { //IF the  music is finished , restart it
        MP3player.stopTrack();
        playMusic();
-  } else {
-       if (indexLoopSound != -1)  //Start the loop if music is not idle
-           playMusic();
   }
   
+  
+  delay(200);
+  
+ /* for (int i = 0;i < 8;i++) {
+      Serial.print(sequence[i]);
+  }
+  Serial.println();*/
 }
 
 void playMusic() {
-    MP3player.playMP3(getFilename(indexLoopSound));
+   
+    if (sequence[0] != -1) {
+      
+      if (sequence[indexLoopSound] != -1)  {
+        MP3player.playMP3(getFilename(sequence[indexLoopSound]));
+        indexLoopSound++;
+        if (indexLoopSound >7) indexLoopSound = 0;
+      } else {
+          indexLoopSound = 0;
+      }
+    }
+   // Serial.println(indexLoopSound);
 }
 
 
 //Return the right file audio to play based on the index
 char* getFilename (int index) {
-   if (index == 0) return "guitar_note1.mp3";
-   else if (index == 1) return "guitar_note2.mp3";
-   else if (index == 2) return "guitar_note3.mp3";
-   else if (index == 3) return "guitar_note4.mp3";
-   else if (index == 4) return "drum_note1.mp3";
-   else if (index == 5) return "drum_note2.mp3";
-   else if (index == 6) return "drum_note3.mp3";
-   else if (index == 7) return "drum_note4.mp3";
-   else if (index == 8) return "keyboard_note1.mp3";
-   else if (index == 9) return "keyboard_note2.mp3";
-   else if (index == 10) return "keyboard_note3.mp3";
-   else if (index == 11) return "keyboard_note4.mp3";
-   else return "guitar_note1.mp3";
+   if (index == 1) return "TC1.MP3";
+   else if (index == 2) return "TC2.MP3";
+   else if (index == 3) return "TC3.MP3";
+   else if (index == 4) return "BC1.MP3";
+   else if (index == 5) return "BC2.MP3";
+   else if (index == 6) return "BC3.MP3";
+   else return "TC1.MP3";
 }
 
-void sendNote(int number) {
-    Serial.print("S");
-    Serial.println(number);
-}
+
 
 void readSerial() {
+  
+    
+    
     if (Serial.available() > 0) {
+          unsigned long result = millis()-lastSerial;
+          
+          Serial.println(result);
+          if (result < 900) {
+            while(Serial.available() > 0) {
+                Serial.read();
+            }
+            Serial.flush();
+            return;
+          }
+          lastSerial = millis();
+          
+          
           int charIn = 0;
-          boolean isLoop = false;
+          boolean isLoopTop = false;
+          boolean isLoopBottom = false;
+          int index = 0;
           while(charIn = Serial.read()) {
              if (charIn == 13 || charIn == -1) break; 
              
-             if (charIn == 'L') isLoop = true; //Check if the incoming is about loop
-             else {
-                if (isLoop) {
-                      int number = charIn -'0'; //double check that the number is in range
-                      if (number >= 0 && number <= 7) indexLoopSound = number;
-                      break;
-                }
+             Serial.println((char)charIn);
+             
+             if (charIn == 'T') { isLoopTop = true;  reset();continue; } //Check if the incoming is about loop
+             if (charIn == 'B') { isLoopBottom = true; reset();  continue;} //Check if the incoming is about loop
+             
+             if (isLoopTop) {
+                 int number = charIn -'0'; //double check that the number is in range
+                 if (number > 3 || number <= 0) continue;
+                 sequence[index] = number;
+                 index++;
+                
+             }
+             
+             if (isLoopBottom) {
+                 int number = charIn -'0'; //double check that the number is in range
+                 if (number > 3 || number <= 0) continue;
+                 if (number == 1) number = 3;
+                 else if (number == 2) number = 4;
+                 else if (number == 3) number = 5;
+                 
+                 sequence[index] = number;
+                 index++;
              }
             
+             
              delay(10); 
           }
+          Serial.flush();
     }
 
 }
 
 
+void reset() {
+  indexLoopSound = 0;
+  for (int i = 0;i < 8;i++) {
+    sequence[i] = -1;
+  }
+  
+}
 
 // initSD() initializes the SD card and checks for an error.
 void initSD()
 {
   //Initialize the SdCard.
-  if(!sd.begin(SD_SEL, SPI_HALF_SPEED)) 
+  if(!sd.begin(9, SPI_HALF_SPEED)) 
     sd.initErrorHalt();
   if(!sd.chdir("/")) 
     sd.errorHalt("sd.chdir");
